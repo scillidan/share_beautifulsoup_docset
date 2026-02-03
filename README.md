@@ -1,8 +1,8 @@
-# file_bs4_dash
+# share_beautifulsoup_docset
 
-[![Create Releases](https://github.com/scillidan/file_bs4_dash/actions/workflows/releases.yml/badge.svg)](https://github.com/scillidan/file_bs4_dash/actions/workflows/releases.yml)
+[![Create Releases](https://github.com/scillidan/share_beautifulsoup_docset/actions/workflows/releases.yml/badge.svg)](https://github.com/scillidan/share_beautifulsoup_docset/actions/workflows/releases.yml)
 
 ## Usage
 
 - Zeal → Tools → Docsets → Add feed
-	- `https://raw.githubusercontent.com/scillidan/file_bs4_dash/refs/heads/master/Beautiful_Soup_4.xml`
+	- `https://raw.githubusercontent.com/scillidan/share_beautifulsoup_docset/refs/heads/master/Beautiful_Soup_4.xml`
