@@ -1,8 +1,7 @@
-name: Create Releases
+name: Release
 
 on:
   schedule:
-    # 00:00 on the 1st of every month (UTC)
     - cron: '0 0 1 * *'
   workflow_dispatch:
 
@@ -19,7 +18,9 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v6
+      with:
+        persist-credentials: false
 
     - name: Get latest BS4 version
       id: get_version
@@ -35,7 +36,6 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         version="${{ steps.get_version.outputs.version }}"
-        # Check if tag exists in repo
         if gh api repos/{owner}/{repo}/git/refs/tags/$version > /dev/null 2>&1; then
           echo "Version $version already exists, skipping release"
           echo "should_release=false" >> $GITHUB_OUTPUT
@@ -49,7 +49,7 @@ jobs:
 
     - name: Set up Python
       if: ${{ steps.check_version.outputs.should_release == 'true' }}
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@8d9ed9ac5b5349cb32a66bb81d1a1499cddbe391  # v5
       with:
         python-version: "3.12"
 
@@ -75,14 +75,16 @@ jobs:
           sha256sum "$file" > "$file.sha256";
         done
 
-    - name: Create GitHub Release and upload files
+    - name: Create GitHub Release
       if: ${{ steps.check_version.outputs.should_release == 'true' }}
-      uses: softprops/action-gh-release@v3
-      with:
-        tag_name: ${{ steps.get_version.outputs.version }}
-        name: "${{ steps.get_version.outputs.version }}"
-        files: |
-          *.tgz
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        gh release create "$VERSION" \
+          *.tgz \
+          --title "$VERSION" \
+          --generate-notes
 
     - name: Create or update XML files
       if: ${{ steps.check_version.outputs.should_release == 'true' }}
