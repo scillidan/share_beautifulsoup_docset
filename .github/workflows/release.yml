@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    outputs:
+      latest_version: ${{ steps.get_version.outputs.version }}
+      should_release: ${{ steps.check_version.outputs.should_release }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v6
+      with:
+        persist-credentials: false
+
+    - name: Get latest BS4 version
+      id: get_version
+      run: |
+        version=$(curl -s "https://www.crummy.com/software/BeautifulSoup/bs4/doc/" | \
+          grep -oP 'Beautiful Soup version \K[0-9.]+' | head -1 | sed 's/\.$//')
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Latest BS4 version: $version"
+
+    - name: Check if version tag already exists
+      id: check_version
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.get_version.outputs.version }}
+        REPO: ${{ github.repository }}
+      run: |
+        status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $GH_TOKEN" \
+          "https://api.github.com/repos/$REPO/releases/tags/$VERSION")
+        if [ "$status" = "200" ]; then
+          echo "should_release=false" >> $GITHUB_OUTPUT
+          echo "Release $VERSION already exists in $REPO, skipping..."
+        else
+          echo "should_release=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Set up Python
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+
+    - name: Install dependencies
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      run: pip install bs4 requests
+
+    - name: Run bs4-to-dash.py
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      run: python bs4-to-dash.py
+
+    - name: Create tgz
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      run: |
+        basename="Beautiful_Soup_4.docset"
+        tar --exclude='.DS_Store' -czf "$basename.tgz" "$basename"
+        rm -rf "$basename"
+
+    - name: Generate SHA256 checksums
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      run: |
+        for file in *.tgz; do
+          sha256sum "$file" > "$file.sha256";
+        done
+
+    - name: Create GitHub Release
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        gh release create "$VERSION" \
+          *.tgz *.sha256 \
+          --title "$VERSION" \
+          --generate-notes
+
+    - name: Create or update XML files
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      env:
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        {
+          echo '<?xml version="1.0" encoding="UTF-8"?>'
+          echo '<xml>'
+          echo '  <entry>'
+          echo '    <name>Beautiful Soup 4</name>'
+          echo "    <version>$VERSION</version>"
+          echo "    <url>https://github.com/${{ github.repository }}/releases/download/$VERSION/Beautiful_Soup_4.docset.tgz</url>"
+          echo '  </entry>'
+          echo '</xml>'
+        } > Beautiful_Soup_4.xml
+
+    - name: Commit and push XML
+      if: ${{ steps.check_version.outputs.should_release == 'true' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        if git ls-files --error-unmatch Beautiful_Soup_4.xml >/dev/null 2>&1; then
+          if git diff --quiet Beautiful_Soup_4.xml; then
+            echo "No changes to Beautiful_Soup_4.xml, skipping commit."
+            exit 0
+          fi
+        fi
+        git add Beautiful_Soup_4.xml
+        git commit -m "doc: update Beautiful_Soup_4.xml for release $VERSION" || true
+        git push
